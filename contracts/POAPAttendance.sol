@@ -20,11 +20,23 @@ contract POAPAttendance is ERC721URIStorage, Ownable {
     mapping(uint256 => Attendance) public attendanceMetadata;
     mapping(address => bool) public validatedStudents;
 
+    /// @notice Emitted when a student is validated
+    event StudentValidated(address indexed student);
+
+    /// @notice Emitted when a badge is minted
+    event BadgeMinted(address indexed student, uint256 indexed tokenId);
+
     constructor(address initialOwner) ERC721("EventPOAP", "POAP") Ownable(initialOwner) {}
 
     /// @notice Validate a student's wallet before minting
     function validateStudent(address student) public onlyOwner {
         validatedStudents[student] = true;
+        emit StudentValidated(student);
+    }
+
+    /// @notice Revoke a student's validation
+    function revokeStudent(address student) public onlyOwner {
+        validatedStudents[student] = false;
     }
 
     /// @notice Mint a soulbound POAP badge to a validated student
@@ -43,6 +55,8 @@ contract POAPAttendance is ERC721URIStorage, Ownable {
 
         attendanceMetadata[tokenId] = Attendance(eventTitle, role, expiryTime);
         nextTokenId++;
+
+        emit BadgeMinted(student, tokenId);
     }
 
     /// @dev Enforce soulbound (non-transferable) by overriding _update (OpenZeppelin v5)
@@ -74,6 +88,22 @@ contract POAPAttendance is ERC721URIStorage, Ownable {
         uint256 expiry = attendanceMetadata[tokenId].expiryTime;
         if (expiry == 0) return true;
         return block.timestamp <= expiry;
+    }
+
+    /// @notice View all badge metadata
+    function getBadgeMetadata(uint256 tokenId)
+        public
+        view
+        returns (
+            string memory eventTitle,
+            string memory role,
+            uint256 expiryTime,
+            string memory uri
+        )
+    {
+        require(ownerOf(tokenId) != address(0), "Badge does not exist");
+        Attendance memory data = attendanceMetadata[tokenId];
+        return (data.eventTitle, data.role, data.expiryTime, tokenURI(tokenId));
     }
 
     /// @notice Transfer ownership (admin handover)
