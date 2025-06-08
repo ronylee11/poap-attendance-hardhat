@@ -6,7 +6,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title POAPAttendance
- * @dev A soulbound NFT system for issuing event attendance badges with role and expiry.
+ * @dev A soulbound NFT system for issuing verifiable event attendance badges
+ * with role-based tagging and optional expiry, compatible with Hardhat.
  */
 contract POAPAttendance is ERC721URIStorage, Ownable {
     uint256 public nextTokenId = 1;
@@ -14,32 +15,29 @@ contract POAPAttendance is ERC721URIStorage, Ownable {
     struct Attendance {
         string eventTitle;
         string role;
-        uint256 expiryTime; // 0 means never expires
+        uint256 expiryTime; // 0 = no expiry
     }
 
     mapping(uint256 => Attendance) public attendanceMetadata;
     mapping(address => bool) public validatedStudents;
 
-    /// @notice Emitted when a student is validated
     event StudentValidated(address indexed student);
-
-    /// @notice Emitted when a badge is minted
     event BadgeMinted(address indexed student, uint256 indexed tokenId);
 
     constructor(address initialOwner) ERC721("EventPOAP", "POAP") Ownable(initialOwner) {}
 
-    /// @notice Validate a student's wallet before minting
+    /// @notice Validates a student's address for badge minting eligibility
     function validateStudent(address student) public onlyOwner {
         validatedStudents[student] = true;
         emit StudentValidated(student);
     }
 
-    /// @notice Revoke a student's validation
+    /// @notice Revokes student validation (if misused or incorrect)
     function revokeStudent(address student) public onlyOwner {
         validatedStudents[student] = false;
     }
 
-    /// @notice Mint a soulbound POAP badge to a validated student
+    /// @notice Mints a soulbound NFT badge to a validated student
     function mintBadge(
         address student,
         string memory tokenURI,
@@ -59,7 +57,7 @@ contract POAPAttendance is ERC721URIStorage, Ownable {
         emit BadgeMinted(student, tokenId);
     }
 
-    /// @dev Enforce soulbound (non-transferable) by overriding _update (OpenZeppelin v5)
+    /// @dev Prevents transfer of NFTs post-mint (soulbound enforcement)
     function _update(
         address to,
         uint256 tokenId,
@@ -70,19 +68,19 @@ contract POAPAttendance is ERC721URIStorage, Ownable {
         return super._update(to, tokenId, auth);
     }
 
-    /// @notice Get role of a badge (e.g., Attendee, VIP)
+    /// @notice Returns badge role string
     function getBadgeRole(uint256 tokenId) public view returns (string memory) {
         require(ownerOf(tokenId) != address(0), "Badge does not exist");
         return attendanceMetadata[tokenId].role;
     }
 
-    /// @notice Get event title of a badge
+    /// @notice Returns event title
     function getEventTitle(uint256 tokenId) public view returns (string memory) {
         require(ownerOf(tokenId) != address(0), "Badge does not exist");
         return attendanceMetadata[tokenId].eventTitle;
     }
 
-    /// @notice Check if the badge is still valid (based on expiry)
+    /// @notice Verifies if a badge is still valid (based on expiry)
     function isBadgeValid(uint256 tokenId) public view returns (bool) {
         require(ownerOf(tokenId) != address(0), "Badge does not exist");
         uint256 expiry = attendanceMetadata[tokenId].expiryTime;
@@ -90,23 +88,18 @@ contract POAPAttendance is ERC721URIStorage, Ownable {
         return block.timestamp <= expiry;
     }
 
-    /// @notice View all badge metadata
+    /// @notice Combines all metadata into one response for frontend use
     function getBadgeMetadata(uint256 tokenId)
         public
         view
-        returns (
-            string memory eventTitle,
-            string memory role,
-            uint256 expiryTime,
-            string memory uri
-        )
+        returns (string memory eventTitle, string memory role, uint256 expiryTime, string memory uri)
     {
         require(ownerOf(tokenId) != address(0), "Badge does not exist");
         Attendance memory data = attendanceMetadata[tokenId];
         return (data.eventTitle, data.role, data.expiryTime, tokenURI(tokenId));
     }
 
-    /// @notice Transfer ownership (admin handover)
+    /// @notice Allows contract ownership transfer
     function transferOwnershipTo(address newOwner) public onlyOwner {
         transferOwnership(newOwner);
     }
