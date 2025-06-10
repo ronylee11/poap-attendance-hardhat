@@ -3,104 +3,77 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 /**
  * @title POAPAttendance
- * @dev A soulbound NFT system for issuing verifiable event attendance badges
- * with role-based tagging and optional expiry, compatible with Hardhat.
+ * @dev A simple NFT system for lecturers to issue attendance badges to students
+ * with soulbound functionality (non-transferable)
  */
 contract POAPAttendance is ERC721URIStorage, Ownable {
     uint256 public nextTokenId = 1;
 
     struct Attendance {
         string eventTitle;
-        string role;
-        uint256 expiryTime; // 0 = no expiry
+        uint256 timestamp;
     }
 
     mapping(uint256 => Attendance) public attendanceMetadata;
-    mapping(address => bool) public validatedStudents;
+    mapping(address => bool) public lecturers;
 
-    event StudentValidated(address indexed student);
+    event LecturerAdded(address indexed lecturer);
     event BadgeMinted(address indexed student, uint256 indexed tokenId);
 
-    constructor(address initialOwner) ERC721("EventPOAP", "POAP") Ownable(initialOwner) {}
+    constructor() ERC721("AttendanceBadge", "BADGE") Ownable(msg.sender) {}
 
-    /// @notice Validates a student's address for badge minting eligibility
-    function validateStudent(address student) public onlyOwner {
-        validatedStudents[student] = true;
-        emit StudentValidated(student);
+    /// @notice Add a lecturer who can mint attendance badges
+    function addLecturer(address lecturer) public onlyOwner {
+        lecturers[lecturer] = true;
+        emit LecturerAdded(lecturer);
     }
 
-    /// @notice Revokes student validation (if misused or incorrect)
-    function revokeStudent(address student) public onlyOwner {
-        validatedStudents[student] = false;
+    /// @notice Remove a lecturer's minting rights
+    function removeLecturer(address lecturer) public onlyOwner {
+        lecturers[lecturer] = false;
     }
 
-    /// @notice Mints a soulbound NFT badge to a validated student
-    function mintBadge(
+    /// @notice Mint an attendance badge to a student
+    function mintAttendanceBadge(
         address student,
         string memory tokenURI,
-        string memory eventTitle,
-        string memory role,
-        uint256 expiryTime
-    ) public onlyOwner {
-        require(validatedStudents[student], "Student not validated");
+        string memory eventTitle
+    ) public {
+        require(lecturers[msg.sender], "Only lecturers can mint badges");
 
         uint256 tokenId = nextTokenId;
         _mint(student, tokenId);
         _setTokenURI(tokenId, tokenURI);
 
-        attendanceMetadata[tokenId] = Attendance(eventTitle, role, expiryTime);
+        attendanceMetadata[tokenId] = Attendance(eventTitle, block.timestamp);
         nextTokenId++;
 
         emit BadgeMinted(student, tokenId);
     }
 
-    /// @dev Prevents transfer of NFTs post-mint (soulbound enforcement)
+    /// @notice Get badge details
+    function getBadgeDetails(uint256 tokenId)
+        public
+        view
+        returns (string memory eventTitle, uint256 timestamp, string memory uri)
+    {
+        require(ownerOf(tokenId) != address(0), "Badge does not exist");
+        Attendance memory data = attendanceMetadata[tokenId];
+        return (data.eventTitle, data.timestamp, tokenURI(tokenId));
+    }
+
+    /// @dev Override _update to prevent transfers (soulbound functionality)
     function _update(
         address to,
         uint256 tokenId,
         address auth
-    ) internal override returns (address) {
+    ) internal virtual override returns (address) {
         address from = _ownerOf(tokenId);
-        require(from == address(0), "This NFT is soulbound and non-transferable");
+        require(from == address(0), "Soulbound: This token cannot be transferred");
         return super._update(to, tokenId, auth);
-    }
-
-    /// @notice Returns badge role string
-    function getBadgeRole(uint256 tokenId) public view returns (string memory) {
-        require(ownerOf(tokenId) != address(0), "Badge does not exist");
-        return attendanceMetadata[tokenId].role;
-    }
-
-    /// @notice Returns event title
-    function getEventTitle(uint256 tokenId) public view returns (string memory) {
-        require(ownerOf(tokenId) != address(0), "Badge does not exist");
-        return attendanceMetadata[tokenId].eventTitle;
-    }
-
-    /// @notice Verifies if a badge is still valid (based on expiry)
-    function isBadgeValid(uint256 tokenId) public view returns (bool) {
-        require(ownerOf(tokenId) != address(0), "Badge does not exist");
-        uint256 expiry = attendanceMetadata[tokenId].expiryTime;
-        if (expiry == 0) return true;
-        return block.timestamp <= expiry;
-    }
-
-    /// @notice Combines all metadata into one response for frontend use
-    function getBadgeMetadata(uint256 tokenId)
-        public
-        view
-        returns (string memory eventTitle, string memory role, uint256 expiryTime, string memory uri)
-    {
-        require(ownerOf(tokenId) != address(0), "Badge does not exist");
-        Attendance memory data = attendanceMetadata[tokenId];
-        return (data.eventTitle, data.role, data.expiryTime, tokenURI(tokenId));
-    }
-
-    /// @notice Allows contract ownership transfer
-    function transferOwnershipTo(address newOwner) public onlyOwner {
-        transferOwnership(newOwner);
     }
 }
