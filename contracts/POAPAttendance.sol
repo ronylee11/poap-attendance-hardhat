@@ -15,7 +15,8 @@ contract POAPAttendance is ERC721URIStorage, Ownable {
 
     struct Attendance {
         string eventTitle;
-        uint256 timestamp;
+        string role;
+        uint256 expiryTime;
     }
 
     mapping(uint256 => Attendance) public attendanceMetadata;
@@ -38,10 +39,12 @@ contract POAPAttendance is ERC721URIStorage, Ownable {
     }
 
     /// @notice Mint an attendance badge to a student
-    function mintAttendanceBadge(
+    function mintBadge(
         address student,
         string memory tokenURI,
-        string memory eventTitle
+        string memory eventTitle,
+        string memory role,
+        uint256 expiryTime
     ) public {
         require(lecturers[msg.sender], "Only lecturers can mint badges");
 
@@ -49,21 +52,28 @@ contract POAPAttendance is ERC721URIStorage, Ownable {
         _mint(student, tokenId);
         _setTokenURI(tokenId, tokenURI);
 
-        attendanceMetadata[tokenId] = Attendance(eventTitle, block.timestamp);
+        attendanceMetadata[tokenId] = Attendance(eventTitle, role, expiryTime);
         nextTokenId++;
 
         emit BadgeMinted(student, tokenId);
     }
 
     /// @notice Get badge details
-    function getBadgeDetails(uint256 tokenId)
+    function getBadgeMetadata(uint256 tokenId)
         public
         view
-        returns (string memory eventTitle, uint256 timestamp, string memory uri)
+        returns (string memory eventTitle, string memory role, uint256 expiryTime, string memory uri)
     {
         require(ownerOf(tokenId) != address(0), "Badge does not exist");
         Attendance memory data = attendanceMetadata[tokenId];
-        return (data.eventTitle, data.timestamp, tokenURI(tokenId));
+        return (data.eventTitle, data.role, data.expiryTime, tokenURI(tokenId));
+    }
+
+    /// @notice Check if a badge is still valid
+    function isBadgeValid(uint256 tokenId) public view returns (bool) {
+        require(ownerOf(tokenId) != address(0), "Badge does not exist");
+        Attendance memory data = attendanceMetadata[tokenId];
+        return data.expiryTime == 0 || block.timestamp <= data.expiryTime;
     }
 
     /// @dev Override _update to prevent transfers (soulbound functionality)
